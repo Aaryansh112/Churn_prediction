@@ -7,17 +7,13 @@ Run: streamlit run streamlit_app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
-try:
-    import matplotlib.pyplot as plt
-except:
-    pass
-from sklearn.preprocessing import LabelEncoder, StandardScaler
+import plotly.graph_objects as go
+from sklearn.preprocessing import LabelEncoder
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.utils.class_weight import compute_sample_weight
-from sklearn.metrics import roc_auc_score, f1_score, classification_report, roc_curve
+from sklearn.metrics import roc_auc_score, f1_score, classification_report, roc_curve, confusion_matrix
 import warnings
 warnings.filterwarnings("ignore")
-
 
 st.set_page_config(
     page_title="TeleChurnAI — Churn Prediction Dashboard",
@@ -27,22 +23,16 @@ st.set_page_config(
 
 st.markdown("""
 <style>
-  .main { background: #020617; }
   h1 { color: #f59e0b; }
-  .metric-card {
-    background: #0f172a; border: 1px solid #334155;
-    border-radius: 12px; padding: 16px; text-align: center;
-  }
 </style>
 """, unsafe_allow_html=True)
 
-#Sidebar 
+# ── Sidebar ──────────────────────────────────────────────────────────────────
 st.sidebar.title("⚙️ Settings")
 threshold = st.sidebar.slider("Decision Threshold", 0.2, 0.8, 0.64, 0.01)
 n_estimators = st.sidebar.slider("GB n_estimators", 50, 500, 300, 50)
-uploaded = st.sidebar.file_uploader("Upload CSV", type=["csv"])
 
-# Preprocessing
+# ── Load & Preprocess ────────────────────────────────────────────────────────
 @st.cache_data
 def load_and_preprocess():
     train = pd.read_csv("churn-bigml-80.csv")
@@ -50,6 +40,7 @@ def load_and_preprocess():
 
     def preprocess(df):
         d = df.copy()
+        from sklearn.preprocessing import LabelEncoder
         le = LabelEncoder()
         for col in ["International plan", "Voice mail plan"]:
             d[col] = le.fit_transform(d[col])
@@ -60,14 +51,14 @@ def load_and_preprocess():
     train_p = preprocess(train)
     test_p  = preprocess(test)
     train_p, test_p = train_p.align(test_p, join="left", axis=1, fill_value=0)
-    return train_p, test_p, train, test
+    return train_p, test_p
 
-train_p, test_p, train_raw, test_raw = load_and_preprocess()
+train_p, test_p = load_and_preprocess()
 FEAT_COLS = [c for c in train_p.columns if c != "Churn"]
 X_train, y_train = train_p[FEAT_COLS], train_p["Churn"]
 X_test,  y_test  = test_p[FEAT_COLS],  test_p["Churn"]
 
-# Model training
+# ── Train Models ─────────────────────────────────────────────────────────────
 @st.cache_resource
 def train_model(n_est):
     sw = compute_sample_weight("balanced", y_train)
@@ -84,7 +75,7 @@ gb_prob = gb.predict_proba(X_test)[:, 1]
 gb_pred = (gb_prob >= threshold).astype(int)
 rf_prob = rf.predict_proba(X_test)[:, 1]
 
-
+# ── Header ───────────────────────────────────────────────────────────────────
 st.title("📡 TeleChurnAI — Customer Churn Prediction Dashboard")
 st.markdown("---")
 
@@ -96,7 +87,7 @@ col4.metric("Threshold", f"{threshold:.2f}", "Tunable in sidebar")
 
 st.markdown("---")
 
-# Tabs
+# ── Tabs ─────────────────────────────────────────────────────────────────────
 tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "🔍 Feature Importance", "🤖 Predict Customer", "📈 ROC Curve"])
 
 with tab1:
@@ -106,42 +97,78 @@ with tab1:
         report = classification_report(y_test, gb_pred, target_names=["Retained", "Churned"], output_dict=True)
         st.dataframe(pd.DataFrame(report).T.round(3))
     with c2:
-    st.subheader("Confusion Matrix")
-    from sklearn.metrics import confusion_matrix
-    cm = confusion_matrix(y_test, gb_pred)
-    cm_df = pd.DataFrame(cm,
-        index=["Actual: Retained", "Actual: Churned"],
-        columns=["Pred: Retained", "Pred: Churned"])
-    st.dataframe(cm_df)
+        st.subheader("Confusion Matrix")
+        cm = confusion_matrix(y_test, gb_pred)
+        cm_df = pd.DataFrame(
+            cm,
+            index=["Actual: Retained", "Actual: Churned"],
+            columns=["Pred: Retained", "Pred: Churned"]
+        )
+        st.dataframe(cm_df)
+
+        fig_cm = go.Figure(data=go.Heatmap(
+            z=cm,
+            x=["Pred: Retained", "Pred: Churned"],
+            y=["Actual: Retained", "Actual: Churned"],
+            colorscale="YlOrRd",
+            text=cm,
+            texttemplate="%{text}",
+            textfont={"size": 20},
+        ))
+        fig_cm.update_layout(
+            paper_bgcolor="#0f172a",
+            plot_bgcolor="#0f172a",
+            font=dict(color="white"),
+            margin=dict(l=20, r=20, t=30, b=20),
+        )
+        st.plotly_chart(fig_cm, use_container_width=True)
 
 with tab2:
     st.subheader("Top-15 Feature Importances — Random Forest")
-    fi = pd.Series(rf.feature_importances_, index=FEAT_COLS)\
-         .sort_values(ascending=False).head(15)\
-         .reset_index()
+    fi = (
+        pd.Series(rf.feature_importances_, index=FEAT_COLS)
+        .sort_values(ascending=False)
+        .head(15)
+        .reset_index()
+    )
     fi.columns = ["Feature", "Importance"]
-    st.bar_chart(fi.set_index("Feature"))
+
+    fig_fi = go.Figure(go.Bar(
+        x=fi["Importance"],
+        y=fi["Feature"],
+        orientation="h",
+        marker=dict(color=fi["Importance"], colorscale="YlOrRd"),
+    ))
+    fig_fi.update_layout(
+        paper_bgcolor="#0f172a",
+        plot_bgcolor="#0f172a",
+        font=dict(color="white"),
+        yaxis=dict(autorange="reversed"),
+        margin=dict(l=20, r=20, t=30, b=20),
+        height=500,
+    )
+    st.plotly_chart(fig_fi, use_container_width=True)
 
 with tab3:
     st.subheader("🔮 Predict Churn for a Single Customer")
     st.markdown("Adjust the sliders to simulate a customer profile:")
+
     c1, c2, c3 = st.columns(3)
     with c1:
-        day_charge    = st.slider("Total Day Charge ($)", 0.0, 60.0, 35.0, 0.5)
-        svc_calls     = st.slider("Customer Service Calls", 0, 9, 1)
-        intl_plan     = st.selectbox("International Plan", ["No", "Yes"])
+        day_charge  = st.slider("Total Day Charge ($)", 0.0, 60.0, 35.0, 0.5)
+        svc_calls   = st.slider("Customer Service Calls", 0, 9, 1)
+        intl_plan   = st.selectbox("International Plan", ["No", "Yes"])
     with c2:
-        eve_charge    = st.slider("Total Eve Charge ($)", 0.0, 30.0, 15.0, 0.5)
-        intl_charge   = st.slider("Total Intl Charge ($)", 0.0, 10.0, 2.5, 0.1)
-        vmail_plan    = st.selectbox("Voice Mail Plan", ["No", "Yes"])
+        eve_charge  = st.slider("Total Eve Charge ($)", 0.0, 30.0, 15.0, 0.5)
+        intl_charge = st.slider("Total Intl Charge ($)", 0.0, 10.0, 2.5, 0.1)
+        vmail_plan  = st.selectbox("Voice Mail Plan", ["No", "Yes"])
     with c3:
-        night_charge  = st.slider("Total Night Charge ($)", 0.0, 20.0, 9.0, 0.5)
-        account_len   = st.slider("Account Length (days)", 1, 243, 101)
-        vmail_msgs    = st.slider("Number Vmail Messages", 0, 51, 0)
-
+        night_charge = st.slider("Total Night Charge ($)", 0.0, 20.0, 9.0, 0.5)
+        account_len  = st.slider("Account Length (days)", 1, 243, 101)
+        vmail_msgs   = st.slider("Number Vmail Messages", 0, 51, 0)
 
     sample = X_test.iloc[[0]].copy()
-    sample["Total day charge"]      = day_charge
+    sample["Total day charge"]       = day_charge
     sample["Customer service calls"] = svc_calls
     sample["International plan"]     = 1 if intl_plan == "Yes" else 0
     sample["Total eve charge"]       = eve_charge
@@ -151,10 +178,9 @@ with tab3:
     sample["Account length"]         = account_len
     sample["Number vmail messages"]  = vmail_msgs
 
-    prob = gb.predict_proba(sample)[0, 1]
+    prob  = gb.predict_proba(sample)[0, 1]
     churn = prob >= threshold
 
-    color = "#ef4444" if churn else "#22c55e"
     label = "⚠️ HIGH CHURN RISK" if churn else "✅ LOW CHURN RISK"
     st.markdown(f"### {label}")
     st.markdown(f"**Churn Probability: `{prob*100:.1f}%`** (threshold = {threshold})")
@@ -167,24 +193,38 @@ with tab3:
 
 with tab4:
     st.subheader("ROC Curves — All Models")
-    fig, ax = plt.subplots(figsize=(7, 5))
-    fig.patch.set_facecolor("#0f172a")
-    ax.set_facecolor("#0f172a")
+
+    fig_roc = go.Figure()
     for name, prob, color in [
         ("Random Forest", rf_prob, "#34d399"),
         ("Gradient Boosting", gb_prob, "#f59e0b"),
     ]:
         fpr, tpr, _ = roc_curve(y_test, prob)
         auc = roc_auc_score(y_test, prob)
-        ax.plot(fpr, tpr, color=color, lw=2, label=f"{name} (AUC={auc:.3f})")
-    ax.plot([0,1],[0,1],"--", color="#475569", lw=1)
-    ax.set_xlabel("False Positive Rate", color="white")
-    ax.set_ylabel("True Positive Rate", color="white")
-    ax.tick_params(colors="white")
-    ax.legend(facecolor="#0f172a", labelcolor="white", fontsize=10)
-    for spine in ax.spines.values(): spine.set_edgecolor("#334155")
-    plt.tight_layout()
-    st.pyplot(fig)
+        fig_roc.add_trace(go.Scatter(
+            x=fpr, y=tpr,
+            mode="lines",
+            name=f"{name} (AUC={auc:.3f})",
+            line=dict(color=color, width=2),
+        ))
+
+    fig_roc.add_trace(go.Scatter(
+        x=[0,1], y=[0,1],
+        mode="lines",
+        name="Random Baseline",
+        line=dict(color="#475569", dash="dash"),
+    ))
+    fig_roc.update_layout(
+        paper_bgcolor="#0f172a",
+        plot_bgcolor="#0f172a",
+        font=dict(color="white"),
+        xaxis_title="False Positive Rate",
+        yaxis_title="True Positive Rate",
+        legend=dict(bgcolor="#0f172a"),
+        margin=dict(l=20, r=20, t=30, b=20),
+        height=500,
+    )
+    st.plotly_chart(fig_roc, use_container_width=True)
 
 st.markdown("---")
 st.caption("TeleChurnAI | scikit-learn | Gradient Boosting + threshold tuning | Telecom Churn Dataset (BigML)")
