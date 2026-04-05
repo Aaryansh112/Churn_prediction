@@ -1,5 +1,5 @@
 """
-Streamlit Dashboard — Customer Churn Prediction
+Customer Churn Prediction Dashboard
 ================================================
 Run: streamlit run streamlit_app.py
 """
@@ -16,7 +16,7 @@ from sklearn.metrics import roc_auc_score, f1_score, classification_report, roc_
 import warnings
 warnings.filterwarnings("ignore")
 
-# ─── Page Config ─────────────────────────────────────────────────────────────
+
 st.set_page_config(
     page_title="TeleChurnAI — Churn Prediction Dashboard",
     page_icon="📡",
@@ -34,13 +34,13 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# ─── Sidebar ─────────────────────────────────────────────────────────────────
+#Sidebar 
 st.sidebar.title("⚙️ Settings")
 threshold = st.sidebar.slider("Decision Threshold", 0.2, 0.8, 0.64, 0.01)
 n_estimators = st.sidebar.slider("GB n_estimators", 50, 500, 300, 50)
 uploaded = st.sidebar.file_uploader("Upload CSV", type=["csv"])
 
-# ─── Load & Preprocess ───────────────────────────────────────────────────────
+# Preprocessing
 @st.cache_data
 def load_and_preprocess():
     train = pd.read_csv("churn-bigml-80.csv")
@@ -65,7 +65,7 @@ FEAT_COLS = [c for c in train_p.columns if c != "Churn"]
 X_train, y_train = train_p[FEAT_COLS], train_p["Churn"]
 X_test,  y_test  = test_p[FEAT_COLS],  test_p["Churn"]
 
-# ─── Train Model ─────────────────────────────────────────────────────────────
+# Model training
 @st.cache_resource
 def train_model(n_est):
     sw = compute_sample_weight("balanced", y_train)
@@ -82,7 +82,7 @@ gb_prob = gb.predict_proba(X_test)[:, 1]
 gb_pred = (gb_prob >= threshold).astype(int)
 rf_prob = rf.predict_proba(X_test)[:, 1]
 
-# ─── Header KPIs ─────────────────────────────────────────────────────────────
+
 st.title("📡 TeleChurnAI — Customer Churn Prediction Dashboard")
 st.markdown("---")
 
@@ -94,7 +94,7 @@ col4.metric("Threshold", f"{threshold:.2f}", "Tunable in sidebar")
 
 st.markdown("---")
 
-# ─── Tabs ────────────────────────────────────────────────────────────────────
+# Tabs
 tab1, tab2, tab3, tab4 = st.tabs(["📊 Overview", "🔍 Feature Importance", "🤖 Predict Customer", "📈 ROC Curve"])
 
 with tab1:
@@ -163,7 +163,7 @@ with tab3:
         account_len   = st.slider("Account Length (days)", 1, 243, 101)
         vmail_msgs    = st.slider("Number Vmail Messages", 0, 51, 0)
 
-    # Build a pseudo feature vector from median values
+
     sample = X_test.iloc[[0]].copy()
     sample["Total day charge"]      = day_charge
     sample["Customer service calls"] = svc_calls
