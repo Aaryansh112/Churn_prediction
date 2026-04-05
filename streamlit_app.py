@@ -7,8 +7,10 @@ Run: streamlit run streamlit_app.py
 import streamlit as st
 import pandas as pd
 import numpy as np
-import matplotlib.pyplot as plt
-import matplotlib.patches as mpatches
+try:
+    import matplotlib.pyplot as plt
+except:
+    pass
 from sklearn.preprocessing import LabelEncoder, StandardScaler
 from sklearn.ensemble import GradientBoostingClassifier, RandomForestClassifier
 from sklearn.utils.class_weight import compute_sample_weight
@@ -104,47 +106,21 @@ with tab1:
         report = classification_report(y_test, gb_pred, target_names=["Retained", "Churned"], output_dict=True)
         st.dataframe(pd.DataFrame(report).T.round(3))
     with c2:
-        st.subheader("Confusion Matrix")
-        from sklearn.metrics import confusion_matrix
-        cm = confusion_matrix(y_test, gb_pred)
-        fig, ax = plt.subplots(figsize=(4, 3))
-        fig.patch.set_facecolor("#0f172a")
-        ax.set_facecolor("#0f172a")
-        im = ax.imshow(cm, cmap="YlOrRd")
-        ax.set_xticks([0,1]); ax.set_yticks([0,1])
-        ax.set_xticklabels(["Retained","Churned"], color="white")
-        ax.set_yticklabels(["Retained","Churned"], color="white")
-        for i in range(2):
-            for j in range(2):
-                ax.text(j, i, str(cm[i,j]), ha="center", va="center", fontsize=18, color="white", fontweight="bold")
-        ax.set_xlabel("Predicted", color="white"); ax.set_ylabel("Actual", color="white")
-        plt.tight_layout()
-        st.pyplot(fig)
+    st.subheader("Confusion Matrix")
+    from sklearn.metrics import confusion_matrix
+    cm = confusion_matrix(y_test, gb_pred)
+    cm_df = pd.DataFrame(cm,
+        index=["Actual: Retained", "Actual: Churned"],
+        columns=["Pred: Retained", "Pred: Churned"])
+    st.dataframe(cm_df)
 
 with tab2:
     st.subheader("Top-15 Feature Importances — Random Forest")
-    fi = pd.Series(rf.feature_importances_, index=FEAT_COLS).sort_values(ascending=False).head(15)
-    fig, ax = plt.subplots(figsize=(9, 5))
-    fig.patch.set_facecolor("#0f172a")
-    ax.set_facecolor("#0f172a")
-    colors = plt.cm.YlOrRd(np.linspace(0.4, 0.9, len(fi)))[::-1]
-    ax.barh(fi.index[::-1], fi.values[::-1], color=colors)
-    ax.set_xlabel("Importance", color="white")
-    ax.tick_params(colors="white")
-    for spine in ax.spines.values(): spine.set_edgecolor("#334155")
-    plt.tight_layout()
-    st.pyplot(fig)
-
-    try:
-        import shap
-        st.subheader("SHAP Summary Plot")
-        explainer = shap.TreeExplainer(gb)
-        sv = explainer.shap_values(X_test.sample(200, random_state=42))
-        fig2, ax2 = plt.subplots()
-        shap.summary_plot(sv, X_test.sample(200, random_state=42), feature_names=FEAT_COLS, show=False)
-        st.pyplot(fig2)
-    except ImportError:
-        st.info("Install `shap` to see SHAP values: `pip install shap`")
+    fi = pd.Series(rf.feature_importances_, index=FEAT_COLS)\
+         .sort_values(ascending=False).head(15)\
+         .reset_index()
+    fi.columns = ["Feature", "Importance"]
+    st.bar_chart(fi.set_index("Feature"))
 
 with tab3:
     st.subheader("🔮 Predict Churn for a Single Customer")
