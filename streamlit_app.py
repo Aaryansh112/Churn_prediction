@@ -128,7 +128,7 @@ with tab3:
 
     prob  = gb.predict_proba(sample)[0, 1]
     churn = prob >= threshold
-    st.markdown(f"### {'⚠️ HIGH CHURN RISK' if churn else '✅ LOW CHURN RISK'}")
+    st.markdown(f"### {'⚠️ HIGH CHURN RISK' if churn else ' LOW CHURN RISK'}")
     st.markdown(f"**Churn Probability: `{prob*100:.1f}%`** (threshold = {threshold})")
     st.progress(float(prob))
     if churn:
